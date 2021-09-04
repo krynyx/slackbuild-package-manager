@@ -29,6 +29,7 @@ sbpm_config()
 	if [ ! -d "$SBPM_PATH" ]; then
 		mkdir $SBPM_PATH
 		mkdir $SBPM_CACHE
+		mkdir $SBPM_PACKAGES
 	fi
 }
 
@@ -136,14 +137,8 @@ sbpm_install()
 	fi
 	#get the package version to  the package name
 	pkg_version=$(echo "$PKGINFO" | sed -n "4,4p" | awk -F ": " '{print $2}')
-	pkg_compiled="/tmp/$pkgname-$pkg_version-*-1_SBo.tgz"
-	
-	#If the package is compiled, then install it
-	if [ -e "$SBPM_PACKAGES/$pkgname-$pkg_version-*-1_SBo.tgz" ]; then
-		/sbin/installpkg $pkg_compiled;
-		exit
-	fi
-	
+	pkg_compiled="/tmp/$pkgname-$pkg_version-*.tgz"
+		
 	echo "Downloading..."
 	#download the slackbuild file
 	sb_package="$pkg_location.tar.gz"
