@@ -1,0 +1,189 @@
+#!/bin/sh
+#SlackBuild Package Manager (SBPM) is a non-official
+#script that's allow users to search, download and install
+#packages from http://slackbuilds.org.
+
+#@author krynyx
+#@url	http://github.com/krynyx/slackbuild-package-manager
+#@date	2021-09-04
+
+
+SBPM_VERSION="1.0.0"
+SBPM_DESC="SlackBuild Package Manager (SBPM)"
+SBPM_PATH="$HOME/.sbpm"
+SBPM_CACHE="$SBPM_PATH/cache"
+SBPM_PACKAGES="$SBPM_PATH/packages"
+
+SB_URL="http://slackbuilds.org/slackbuilds"
+SB_TAGS="TAGS.txt"
+SB_PKGINFO="SLACKBUILDS.TXT"
+
+SYSTEM_VERSION=$(cut -d" " -f2 /etc/slackware-version)
+
+OPT=$1 #is the function to call
+ARG=$2 #is the package name
+
+#=================HELPERS=======================
+sbpm_config()
+{
+	if [ ! -d "$SBPM_PATH" ]; then
+		mkdir $SBPM_PATH
+		mkdir $SBPM_CACHE
+	fi
+}
+
+
+#Search for the package name to verify if it exists before
+#install/info operations.
+PKGEXIST=0
+package_exist()
+{
+	pkgname=$1
+	result=$(cat "$SBPM_PATH/$SB_TAGS"|cut -d':' -f1 | grep -s -i -x "$pkgname")
+	if [ "$result" == "$pkgname" ]; then
+		PKGEXIST=1
+	else
+		PKGEXIST=0
+	fi
+}
+
+#If the package exists then get its information
+PKGINFO="undefined"
+get_package_info()
+{
+	pkgname=$1
+	package_exist $pkgname
+	if [ "$PKGEXIST" -eq 1 ]; then
+		query="SLACKBUILD NAME: $pkgname"
+		first_line=$(grep -n "$query" "$SBPM_PATH/$SB_PKGINFO"|cut -d':' -f1)
+		last_line=$(($first_line+10))
+		PKGINFO=$(sed -n "$first_line,$last_line p" "$SBPM_PATH/$SB_PKGINFO")
+	fi
+
+}
+#=================MAIN FUNCTIONS=======================
+
+sbpm_help()
+{
+	echo -e "==================================================="
+	echo -e "\t $SBPM_DESC"
+	echo -e "===================================================\n"
+	echo -e "\t sbpm help \t\t\t show this content"
+	echo -e "\t sbpm sync \t\t\t sync package data from slackbuilds.org"
+	echo -e "\t sbpm info <package_name> \t show package information"
+	echo -e "\t sbpm search <package_name> \t search for a specific package"
+	echo -e "\t sbpm install <package_name> \t install a package"
+	echo -e "\n"
+
+	exit
+}
+
+sbpm_sync()
+{
+	sbpm_config
+	echo "Syncing..."
+	wget -c "$SB_URL/$SYSTEM_VERSION/$SB_TAGS" -P "$SBPM_PATH" &&
+	wget -c "$SB_URL/$SYSTEM_VERSION/$SB_PKGINFO" -P "$SBPM_PATH" &&
+	echo "Done!"
+	
+	exit
+}
+
+#Function to search packages by tags and package names
+sbpm_search()
+{
+	pkgname=$1
+	echo "Searching package \"$pkgname\"..."
+	echo -e "==============================================="
+	echo -e "\t\tPACKAGES FOUND:"
+	echo -e "===============================================\n"
+	packages=$(cat "$SBPM_PATH/$SB_TAGS"|grep -i $pkgname|awk -F ":" '{print $1}')
+	echo -e "$packages\n"
+	exit
+}
+
+#Function to show package information
+sbpm_info()
+{
+	pkgname=$1
+	get_package_info $pkgname
+	if [ "$PKGEXIST" -eq 1 ]; then
+		echo -e "$PKGINFO"
+	else
+		echo -e "========| PACKAGE NOT FOUND! |========"
+	fi
+	exit
+}
+
+sbpm_install()
+{
+	pkgname=$1
+	#Continue only if the package exists
+	get_package_info $pkgname
+	if [ "$PKGEXIST" == 0 ]; then
+		echo -e "========| PACKAGE NOT FOUND! |========"
+		echo "Run 'sbpm sync' and try again"
+		exit
+	fi
+	
+	echo "Preparing to install..."
+	pkg_location=$(echo "$PKGINFO" | sed -n "2,2p" | cut -d "." -f2)
+	pkg_download=$(echo "$PKGINFO" | sed -n "5,5p" | awk -F "DOWNLOAD: " '{print $2}')
+
+	#get the x86_64 download link if x32 does not exits
+	if [ "$pkg_download" == "UNSUPPORTED" ]; then
+		pkg_download=$(echo "$PKGINFO" | sed -n "6,6p" | awk -F "DOWNLOAD_x86_64: " '{print $2}')
+	fi
+	#get the package version to  the package name
+	pkg_version=$(echo "$PKGINFO" | sed -n "4,4p" | awk -F ": " '{print $2}')
+	pkg_compiled="/tmp/$pkgname-$pkg_version-*-1_SBo.tgz"
+	
+	#If the package is compiled, then install it
+	if [ -e "$SBPM_PACKAGES/$pkgname-$pkg_version-*-1_SBo.tgz" ]; then
+		/sbin/installpkg $pkg_compiled;
+		exit
+	fi
+	
+	echo "Downloading..."
+	#download the slackbuild file
+	sb_package="$pkg_location.tar.gz"
+	wget -c "$SB_URL/$SYSTEM_VERSION/$sb_package" -P "$SBPM_CACHE" --no-check-certificate &&
+	tar -zxvf "$SBPM_PATH/cache/$pkgname.tar.gz" -C "$SBPM_CACHE"
+	
+	#download package binary file
+	IFS=' '
+	read -ra package_url <<< "$pkg_download"
+	for url in "${package_url[@]}";
+	do
+		pkg_downloaded=0
+		wget -c "$url" -P "$SBPM_CACHE/$pkgname/" --no-check-certificate &&
+		pkg_downloaded=1
+	done
+	
+	if [ $pkg_downloaded -eq 0 ]; then
+		echo "Download Error!"
+		exit
+	fi
+	echo "Done!"
+	echo "Installing..."
+	
+	chmod +x "$SBPM_CACHE/$pkgname/$pkgname.SlackBuild" &&
+	cd "$SBPM_CACHE/$pkgname/" &&
+	sh "$SBPM_CACHE/$pkgname/$pkgname.SlackBuild" &&
+	/sbin/installpkg $pkg_compiled && 
+	mv $pkg_compiled $SBPM_PACKAGES
+	echo "Done!"
+}
+#=================END MAIN FUNCTIONS===================
+
+if [ "$OPT" == "help" ]; then
+	sbpm_help
+elif [ "$OPT" == "sync" ]; then
+	sbpm_sync
+elif [ "$OPT" == "search" ]; then
+	sbpm_search $ARG
+elif [ "$OPT" == "info" ]; then
+	sbpm_info $ARG
+elif [ "$OPT" == "install" ]; then
+	sbpm_install $ARG
+fi

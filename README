@@ -1,0 +1,12 @@
+SlackBuild Package Manager (SBPM) is a shell script
+that allow users to download and install packages
+from http://slackbuilds.org.
+
+@author krynyx
+@url	http://github.com/krynyx/slackbuild-package-manager
+@date	2021-09-04
+
+
+This script does not resolve dependencies. You can
+get all package dependencies running "sbpm info <package>"
+command for install it manually.
