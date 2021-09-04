@@ -56,7 +56,7 @@ get_package_info()
 	package_exist $pkgname
 	if [ "$PKGEXIST" -eq 1 ]; then
 		query="SLACKBUILD NAME: $pkgname"
-		first_line=$(grep -n "$query" "$SBPM_PATH/$SB_PKGINFO"|cut -d':' -f1)
+		first_line=$(grep -n -wx "$query" "$SBPM_PATH/$SB_PKGINFO"|cut -d':' -f1)
 		last_line=$(($first_line+10))
 		PKGINFO=$(sed -n "$first_line,$last_line p" "$SBPM_PATH/$SB_PKGINFO")
 	fi
